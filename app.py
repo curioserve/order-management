@@ -417,6 +417,7 @@ def reset():
     return redirect(url_for('index'))
 
 if __name__ == '__main__':
-    # Initialize orders when starting the app
     load_orders_from_csv()
-    app.run(debug=True)
+    import os
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port, debug=True)
