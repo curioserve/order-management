@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Order Management System</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css">
+    <style>
+        .order-card {
+            margin-bottom: 1rem;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 1rem;
+        }
+        
+        .order-card.forced {
+            border: 2px solid #ff4444;
+            background-color: #fff5f5;
+        }
+        
+        .order-card.halted {
+            border: 2px solid #ffbb33;
+            background-color: #fff9e6;
+        }
+        
+        .progress-bar {
+            height: 20px;
+            background-color: #f0f0f0;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 0.5rem 0;
+        }
+        
+        .progress-bar-fill {
+            height: 100%;
+            background-color: #28a745;
+            transition: width 0.3s ease;
+        }
+        
+        .force-button {
+            background-color: #dc3545;
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-left: 0.5rem;
+        }
+        
+        .force-button:hover {
+            background-color: #c82333;
+        }
+        
+        .unforce-button {
+            background-color: #6c757d;
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-left: 0.5rem;
+        }
+        
+        .unforce-button:hover {
+            background-color: #5a6268;
+        }
+        .order-card:hover {
+            transform: translateY(-2px);
+        }
+        .progress {
+            height: 1.5rem;
+        }
+        .operation-progress {
+            height: 1rem;
+            margin-bottom: 0.5rem;
+        }
+        .operation-block {
+            display: block;
+            padding: 0.5rem;
+            margin: 0.25rem 0;
+            border-radius: 0.25rem;
+            font-size: 0.8rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .operation-pending {
+            background-color: #e9ecef;
+            border: 1px solid #dee2e6;
+        }
+        .operation-in-progress {
+            background-color: #cce5ff;
+            border: 1px solid #b8daff;
+        }
+        .operation-completed {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+        }
+        .time-scale {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 0.5rem;
+            font-size: 0.8rem;
+            color: #6c757d;
+        }
+        .order-section {
+            margin-bottom: 2rem;
+        }
+        .forced-badge {
+            background-color: #ff4444;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.8em;
+            margin-left: 10px;
+        }
+        .halted-badge {
+            background-color: #ffbb33;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.8em;
+            margin-left: 10px;
+        }
+        .order-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .btn-danger {
+            background-color: #dc3545;
+            border-color: #dc3545;
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .btn-danger:hover {
+            background-color: #c82333;
+            border-color: #bd2130;
+            transform: translateY(-1px);
+        }
+        
+        .btn-danger i {
+            margin-right: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid py-4">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1>Order Management System</h1>
+            <form action="{{ url_for('reset') }}" method="post" onsubmit="return confirm('Are you sure you want to reset the entire system? This will clear all progress and restart all orders.');">
+                <button type="submit" class="btn btn-danger">
+                    <i class="bi bi-arrow-counterclockwise"></i> Reset System
+                </button>
+            </form>
+        </div>
+        
+        <!-- Summary Cards -->
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Total Completion</h5>
+                        <p class="card-text display-4" id="totalCompletion">0%</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Total Remaining Time (seconds)</h5>
+                        <p class="card-text display-4">{{ total_remaining_time }}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Machine Status -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <h2>Machine Status</h2>
+                <div class="row">
+                    {% for machine, status in machine_status.items() %}
+                    <div class="col-md-4 mb-3">
+                        <div class="card">
+                            <div class="card-body">
+                                <h5 class="card-title">{{ machine }}</h5>
+                                <p class="card-text">
+                                    Status: <span class="badge {% if status.status == 'busy' %}bg-warning{% else %}bg-success{% endif %}">
+                                        {{ status.status|upper }}
+                                    </span>
+                                </p>
+                                {% if status.status == 'busy' %}
+                                <p class="card-text">
+                                    Current Order: {{ status.current_order }}<br>
+                                    Operation: {{ status.current_operation }}<br>
+                                    Start: {{ status.start_time.strftime('%H:%M:%S') }}<br>
+                                    End: {{ status.end_time.strftime('%H:%M:%S') }}
+                                </p>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Orders by Status -->
+        <div class="row">
+            <!-- In Progress Orders (Shown First) -->
+            <div class="col-md-4 order-section">
+                <h2>In Progress Orders</h2>
+                {% for order in orders_by_status[OperationStatus.IN_PROGRESS] %}
+                <div class="order-card {% if order.is_forced %}forced{% endif %} {% if order.order_code in halted_orders %}halted{% endif %}">
+                    <div class="order-header">
+                        <h3>Order {{ order.order_code }}</h3>
+                        {% if order.is_forced %}
+                        <span class="forced-badge">FORCED</span>
+                        {% endif %}
+                        {% if order.order_code in halted_orders %}
+                        <span class="halted-badge">HALTED</span>
+                        {% endif %}
+                    </div>
+                    <div class="order-details">
+                        <p>Quantity: {{ order.quantity }}</p>
+                        <p>Progress: {{ "%.3f"|format(order.get_progress_percentage()) }}%</p>
+                        <p>Remaining Time: {{ format_duration(order.get_remaining_time()) }}</p>
+                    </div>
+                    <div class="operations-list">
+                        {% for operation in order.get_operation_sequence() %}
+                        <div class="operation-block {% if operation.status == OperationStatus.IN_PROGRESS %}operation-in-progress{% elif operation.status == OperationStatus.COMPLETED %}operation-completed{% else %}operation-pending{% endif %}">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <span>{{ operation.name }} ({{ operation.sequence_number }})</span>
+                                {% if operation.status == OperationStatus.IN_PROGRESS %}
+                                <span>Machine: {{ operation.assigned_machine }}</span>
+                                {% endif %}
+                            </div>
+                            <div class="operation-progress">
+                                <div class="progress">
+                                    <div class="progress-bar {% if operation.status == OperationStatus.COMPLETED %}bg-success{% elif operation.status == OperationStatus.IN_PROGRESS %}bg-warning{% else %}bg-secondary{% endif %}" 
+                                         role="progressbar" 
+                                         style="width: {{ operation.get_progress_percentage()|int }}%"
+                                         data-start-time="{{ operation.start_time.strftime('%Y-%m-%d %H:%M:%S') if operation.start_time else '' }}"
+                                         data-end-time="{{ operation.completion_time.strftime('%Y-%m-%d %H:%M:%S') if operation.completion_time else '' }}">
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="d-flex justify-content-between align-items-center">
+                                <small class="text-muted">
+                                    Status: {{ operation.status.value }}
+                                </small>
+                                <small class="text-muted time-display"
+                                       data-start-time="{{ operation.start_time.strftime('%Y-%m-%d %H:%M:%S') if operation.start_time else '' }}"
+                                       data-end-time="{{ operation.completion_time.strftime('%Y-%m-%d %H:%M:%S') if operation.completion_time else '' }}">
+                                    {% if operation.status == OperationStatus.IN_PROGRESS %}
+                                        {{ operation.get_remaining_time()|int // 60 }}:{{ "%02d"|format(operation.get_remaining_time()|int % 60) }}
+                                    {% else %}
+                                        {{ format_duration(get_min_processing_time(operation)) }}
+                                    {% endif %}
+                                </small>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% if not order.is_forced and order.status != OperationStatus.COMPLETED %}
+                        <form action="{{ url_for('force_order') }}" method="post" style="display: inline;">
+                            <input type="hidden" name="order_code" value="{{ order.order_code }}">
+                            <button type="submit" class="force-button">Force Order</button>
+                        </form>
+                    {% endif %}
+                    {% if order.is_forced %}
+                        <form action="{{ url_for('unforce_order') }}" method="post" style="display: inline;">
+                            <input type="hidden" name="order_code" value="{{ order.order_code }}">
+                            <button type="submit" class="unforce-button">Unforce Order</button>
+                        </form>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+            
+            <!-- Pending Orders -->
+            <div class="col-md-4 order-section">
+                <h2>Pending Orders</h2>
+                {% for order in orders_by_status[OperationStatus.PENDING] %}
+                <div class="card order-card {% if order.is_forced %}forced{% endif %}">
+                    <div class="card-body">
+                        <h5 class="card-title">Order {{ order.order_code }}</h5>
+                        <p class="card-text">Quantity: {{ order.quantity }}</p>
+                        <div class="progress mb-2">
+                            <div class="progress-bar" role="progressbar" style="width: 0%">0%</div>
+                        </div>
+                        <p class="card-text">Total Time: {{ format_duration(calculate_total_order_time(order)) }}</p>
+                        <div class="operations-list">
+                            {% for operation in order.get_operation_sequence() %}
+                            <div class="operation-block operation-pending">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <span>{{ operation.name }} ({{ operation.sequence_number }})</span>
+                                </div>
+                                <div class="operation-progress">
+                                    <div class="progress">
+                                        <div class="progress-bar bg-secondary" role="progressbar" style="width: 0%">0%</div>
+                                    </div>
+                                </div>
+                                <small class="text-muted">
+                                    Estimated: {{ format_duration(get_min_processing_time(operation)) }}
+                                </small>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        {% if not order.is_forced %}
+                            <form action="{{ url_for('force_order') }}" method="post" style="display: inline;">
+                                <input type="hidden" name="order_code" value="{{ order.order_code }}">
+                                <button type="submit" class="force-button">Force Order</button>
+                            </form>
+                        {% else %}
+                            <form action="{{ url_for('unforce_order') }}" method="post" style="display: inline;">
+                                <input type="hidden" name="order_code" value="{{ order.order_code }}">
+                                <button type="submit" class="unforce-button">Unforce Order</button>
+                            </form>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            
+            <!-- Completed Orders -->
+            <div class="col-md-4 order-section">
+                <h2>Completed Orders</h2>
+                {% for order in orders_by_status[OperationStatus.COMPLETED] %}
+                <div class="card order-card">
+                    <div class="card-body">
+                        <h5 class="card-title">Order {{ order.order_code }}</h5>
+                        <p class="card-text">Quantity: {{ order.quantity }}</p>
+                        <div class="progress mb-2">
+                            <div class="progress-bar bg-success" role="progressbar" style="width: 100%">100%</div>
+                        </div>
+                        <p class="card-text">Completed at: {% if order.completion_time %}{{ order.completion_time.strftime('%H:%M:%S') }}{% else %}N/A{% endif %}</p>
+                        <div class="operations-list">
+                            {% for operation in order.get_operation_sequence() %}
+                            <div class="operation-block operation-completed">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <span>{{ operation.name }} ({{ operation.sequence_number }})</span>
+                                </div>
+                                <div class="operation-progress">
+                                    <div class="progress">
+                                        <div class="progress-bar bg-success" role="progressbar" style="width: 100%">100%</div>
+                                    </div>
+                                </div>
+                                <small class="text-muted">
+                                    Completed
+                                </small>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script>
+    function updateProgress() {
+        const now = new Date();
+        const progressBars = document.querySelectorAll('.progress-bar');
+        const timeDisplays = document.querySelectorAll('.time-display');
+        let totalProgress = 0;
+        let totalOperations = 0;
+        
+        // Get all order cards
+        const orderCards = document.querySelectorAll('.order-card');
+        
+        orderCards.forEach(card => {
+            const operations = card.querySelectorAll('.operation-block');
+            let orderProgress = 0;
+            let orderOperations = 0;
+            
+            operations.forEach(operation => {
+                const progressBar = operation.querySelector('.progress-bar');
+                orderOperations++;
+                
+                // Handle in-progress operations
+                if (progressBar.dataset.startTime && progressBar.dataset.endTime) {
+                    const startTime = new Date(progressBar.dataset.startTime);
+                    const endTime = new Date(progressBar.dataset.endTime);
+                    const totalDuration = endTime - startTime;
+                    
+                    if (now >= startTime && now <= endTime) {
+                        const elapsed = now - startTime;
+                        const progress = (elapsed / totalDuration) * 100;
+                        progressBar.style.width = `${Math.min(100, progress)}%`;
+                        orderProgress += progress;
+                    } else if (now > endTime) {
+                        progressBar.style.width = '100%';
+                        orderProgress += 100;
+                    }
+                }
+            });
+            
+            if (orderOperations > 0) {
+                totalProgress += orderProgress / orderOperations;
+                totalOperations++;
+            }
+        });
+        
+        // Update time displays for in-progress operations
+        timeDisplays.forEach(display => {
+            if (display.dataset.startTime && display.dataset.endTime) {
+                const startTime = new Date(display.dataset.startTime);
+                const endTime = new Date(display.dataset.endTime);
+                
+                if (now >= startTime && now <= endTime) {
+                    const remaining = endTime - now;
+                    const minutes = Math.floor(remaining / 60000);
+                    const seconds = Math.floor((remaining % 60000) / 1000);
+                    display.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+                } else if (now > endTime) {
+                    display.textContent = '0:00';
+                }
+            }
+        });
+
+        // Update completion percentage
+        if (totalOperations > 0) {
+            const averageProgress = totalProgress / totalOperations;
+            document.getElementById('totalCompletion').textContent = `${averageProgress.toFixed(3)}%`;
+        }
+    }
+
+    // Update every second
+    setInterval(updateProgress, 1000);
+    // Initial update
+    updateProgress();
+    </script>
+</body>
+</html> 
