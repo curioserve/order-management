@@ -1,0 +1,113 @@
+.machine-status-container {
+    margin: 20px;
+    padding: 20px;
+    background-color: #f8f9fa;
+    border-radius: 12px;
+}
+
+.machine-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 20px;
+    padding: 20px;
+}
+
+.machine-card {
+    background-color: white;
+    border-radius: 10px;
+    padding: 20px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    transition: transform 0.2s;
+}
+
+.machine-card:hover {
+    transform: translateY(-2px);
+}
+
+.machine-card.busy {
+    border-left: 4px solid #ff6b6b;
+}
+
+.machine-card.idle {
+    border-left: 4px solid #51cf66;
+}
+
+.status-badge {
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 0.8em;
+    font-weight: bold;
+}
+
+.status-badge.busy {
+    background-color: #ffe3e3;
+    color: #ff6b6b;
+}
+
+.status-badge.idle {
+    background-color: #d3f9d8;
+    color: #51cf66;
+}
+
+.progress-container {
+    margin: 15px 0;
+}
+
+.progress-bar {
+    height: 20px;
+    background-color: #0773de;
+    border-radius: 10px;
+    overflow: hidden;
+    position: relative;
+}
+
+.progress {
+    height: 100%;
+    background: linear-gradient(90deg, #74c0fc, #4dabf7);
+    transition: width 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.progress-text {
+    color: white;
+    font-size: 0.8em;
+    font-weight: bold;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.2);
+}
+
+.time-info {
+    text-align: right;
+    font-size: 0.9em;
+    color: #495057;
+    margin-top: 5px;
+}
+
+.upcoming-operations {
+    margin-top: 20px;
+    border-top: 1px solid #e9ecef;
+    padding-top: 15px;
+}
+
+.upcoming-operation {
+    background-color: #f8f9fa;
+    border-radius: 8px;
+    padding: 10px;
+    margin-bottom: 10px;
+}
+
+.operation-info {
+    margin-bottom: 5px;
+}
+
+.operation-name {
+    color: #495057;
+    margin-left: 8px;
+}
+
+.start-time, .duration {
+    font-size: 0.8em;
+    color: #868e96;
+    display: block;
+}

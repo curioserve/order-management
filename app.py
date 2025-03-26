@@ -63,196 +63,139 @@ def load_orders_from_csv():
 
 def schedule_orders(orders):
     current_time = datetime.now()
-    machine_schedule = defaultdict(list)  # List of (order, operation, start_time, end_time) for each machine
-    order_status = {}  # Track current operation for each order
-    halted_orders = set()  # Track which orders were halted
+    machine_schedule = defaultdict(list)
     
-    # First, preserve all in-progress operations
-    in_progress_operations = []
+    # Sort all operations by priority (forced first) and earliest start time
+    all_operations = []
     for order in orders.values():
         for operation in order.get_operation_sequence():
-            if operation.status == OperationStatus.IN_PROGRESS and operation.assigned_machine:
-                in_progress_operations.append((order, operation, operation.start_time, operation.completion_time))
-                machine_schedule[operation.assigned_machine].append((order, operation, operation.start_time, operation.completion_time))
+            all_operations.append((order, operation))
     
-    # Then handle forced orders
-    forced_orders = [order for order in orders.values() if order.is_forced]
-    if forced_orders:
-        # For each forced order, find and halt any conflicting operations
-        for order in forced_orders:
-            # Find all machines needed for this order
-            needed_machines = set()
-            for operation in order.get_operation_sequence():
-                needed_machines.update(operation.capable_machines)
-            
-            # Halt any operations using these machines
-            for machine in needed_machines:
-                if machine in machine_schedule:
-                    for existing_order, existing_operation, _, _ in machine_schedule[machine]:
-                        if existing_order != order and existing_operation.status == OperationStatus.IN_PROGRESS:
-                            # Halt the operation
-                            existing_operation.status = OperationStatus.PENDING
-                            existing_operation.start_time = None
-                            existing_operation.completion_time = None
-                            existing_operation.assigned_machine = None
-                            halted_orders.add(existing_order.order_code)
-            
-            # Now schedule the forced order
-            has_in_progress = False
-            all_completed = True
-            
-            for operation in order.get_operation_sequence():
-                # Find the earliest available machine
-                earliest_start = current_time
-                selected_machine = None
-                
-                for machine in operation.capable_machines:
-                    machine_operations = machine_schedule[machine]
-                    if not machine_operations:  # Machine is free
-                        selected_machine = machine
-                        break
-                    
-                    # Check if machine will be free before other operations
-                    last_operation = machine_operations[-1]
-                    if last_operation[3] < earliest_start:
-                        earliest_start = last_operation[3]
-                        selected_machine = machine
-                
-                if selected_machine:
-                    # Schedule the operation
-                    start_time = earliest_start
-                    end_time = start_time + timedelta(seconds=operation.processing_times[selected_machine])
-                    machine_schedule[selected_machine].append((order, operation, start_time, end_time))
-                    
-                    # Update operation status
-                    operation.status = OperationStatus.IN_PROGRESS
-                    operation.assigned_machine = selected_machine
-                    operation.start_time = start_time
-                    operation.completion_time = end_time
-                    has_in_progress = True
-                    all_completed = False
-                    
-                    # Update order status
-                    order_status[order.order_code] = operation
-                else:
-                    # If no machine is available, keep operation pending
-                    operation.status = OperationStatus.PENDING
-                    operation.assigned_machine = None
-                    operation.start_time = None
-                    operation.completion_time = None
-                    all_completed = False
-            
-            # Update order status
-            if all_completed:
-                order.status = OperationStatus.COMPLETED
-                order.unforce_order()
-            elif has_in_progress:
-                order.status = OperationStatus.IN_PROGRESS
-            else:
-                order.status = OperationStatus.PENDING
+    # Sort by forced status and earliest possible start time
+    all_operations.sort(key=lambda x: (
+        -x[0].is_forced,  # Forced orders first
+        x[1].sequence_number,
+        x[0].created_at
+    ))
     
-    # Then handle remaining orders
-    remaining_orders = [order for order in orders.values() if not order.is_forced]
-    for order in remaining_orders:
-        has_in_progress = False
-        all_completed = True
+    # Schedule operations
+    for order, operation in all_operations:
+        # Find earliest available machine
+        earliest_end = current_time
+        selected_machine = None
         
-        for operation in order.get_operation_sequence():
-            if operation.status == OperationStatus.IN_PROGRESS:
-                has_in_progress = True
-                all_completed = False
-                continue
+        for machine in operation.capable_machines:
+            if machine not in machine_schedule:
+                selected_machine = machine
+                break
                 
-            # Find the earliest available machine
-            earliest_start = current_time
-            selected_machine = None
-            
-            for machine in operation.capable_machines:
-                machine_operations = machine_schedule[machine]
-                if not machine_operations:  # Machine is free
-                    selected_machine = machine
-                    break
-                
-                # Check if machine will be free before other operations
-                last_operation = machine_operations[-1]
-                if last_operation[3] < earliest_start:
-                    earliest_start = last_operation[3]
-                    selected_machine = machine
-            
-            if selected_machine:
-                # Schedule the operation
-                start_time = earliest_start
-                end_time = start_time + timedelta(seconds=operation.processing_times[selected_machine])
-                machine_schedule[selected_machine].append((order, operation, start_time, end_time))
-                
-                # Update operation status
-                operation.status = OperationStatus.IN_PROGRESS
-                operation.assigned_machine = selected_machine
-                operation.start_time = start_time
-                operation.completion_time = end_time
-                has_in_progress = True
-                all_completed = False
-                
-                # Update order status
-                order_status[order.order_code] = operation
-            else:
-                # If no machine is available, keep operation pending
-                operation.status = OperationStatus.PENDING
-                operation.assigned_machine = None
-                operation.start_time = None
-                operation.completion_time = None
-                all_completed = False
+            last_op_end = machine_schedule[machine][-1][3] if machine_schedule[machine] else current_time
+            if last_op_end < earliest_end:
+                earliest_end = last_op_end
+                selected_machine = machine
         
-        # Update order status
-        if all_completed:
-            order.status = OperationStatus.COMPLETED
-        elif has_in_progress:
-            order.status = OperationStatus.IN_PROGRESS
-        else:
-            order.status = OperationStatus.PENDING
+        if selected_machine:
+            duration = operation.processing_times[selected_machine]
+            start_time = earliest_end
+            end_time = start_time + timedelta(seconds=duration)
+            
+            machine_schedule[selected_machine].append((
+                order,
+                operation,
+                start_time,
+                end_time
+            ))
     
-    return machine_schedule, order_status, halted_orders
+    # Sort each machine's schedule by start time
+    for machine in machine_schedule:
+        machine_schedule[machine].sort(key=lambda x: x[2])
+    
+    return machine_schedule, {}, set()
 
-def get_machine_status(orders):
+def get_machine_status(orders, machine_schedule):
+    """Get detailed status for each machine including current and next operations"""
     machine_status = {}
     current_time = datetime.now()
     
-    # Initialize all machines (M1-M45) as idle
+    # Initialize all machines (M1-M45)
     for i in range(1, 46):
-        machine_status[f'M{i}'] = {
+        machine_id = f'M{i}'
+        machine_status[machine_id] = {
             'status': 'idle',
             'current_order': None,
             'current_operation': None,
             'start_time': None,
-            'end_time': None
+            'end_time': None,
+            'start_time_str': None,
+            'end_time_str': None,
+            'progress_percentage': 0,
+            'remaining_time': 0,
+            'upcoming_operations': [],
+            'full_schedule': []
         }
     
-    # Check each order's operations
-    for order in orders.values():
-        for operation in order.get_operation_sequence():
-            if operation.status == OperationStatus.IN_PROGRESS and operation.assigned_machine:
-                machine = operation.assigned_machine
-                start_time = operation.start_time
-                end_time = operation.completion_time
+    # Process machine schedules
+    for machine_id, scheduled_ops in machine_schedule.items():
+        scheduled_ops.sort(key=lambda x: x[2])
+        current_operation = None
+        upcoming_operations = []
+        full_schedule = []
+        
+        for order, operation, start_time, end_time in scheduled_ops:
+            schedule_entry = {
+                'order_code': order.order_code,
+                'operation_name': operation.name,
+                'start_time_str': start_time.strftime('%H:%M:%S'),
+                'end_time_str': end_time.strftime('%H:%M:%S'),
+                'duration': format_duration((end_time - start_time).total_seconds())
+            }
+            full_schedule.append(schedule_entry)
+            
+            if start_time <= current_time <= end_time:
+                total_duration = (end_time - start_time).total_seconds()
+                elapsed_time = (current_time - start_time).total_seconds()
+                progress = min(100, (elapsed_time / total_duration) * 100 if total_duration > 0 else 0)
+                remaining_time = max(0, (end_time - current_time).total_seconds())
                 
-                # Only show as busy if the operation is currently running
-                if start_time and end_time and start_time <= current_time <= end_time:
-                    machine_status[machine] = {
-                        'status': 'busy',
-                        'current_order': order.order_code,
-                        'current_operation': operation.name,
-                        'start_time': start_time,
-                        'end_time': end_time
-                    }
-                else:
-                    # If operation is not currently running, mark machine as idle
-                    machine_status[machine] = {
-                        'status': 'idle',
-                        'current_order': None,
-                        'current_operation': None,
-                        'start_time': None,
-                        'end_time': None
-                    }
+                machine_status[machine_id].update({
+                    'status': 'busy',
+                    'current_order': order.order_code,
+                    'current_operation': operation.name,
+                    'start_time_str': start_time.strftime('%H:%M:%S'),
+                    'end_time_str': end_time.strftime('%H:%M:%S'),
+                    'progress_percentage': round(progress, 1),
+                    'remaining_time': remaining_time,
+                    'operation_duration': format_duration(total_duration),
+                    'elapsed_time': format_duration(elapsed_time),
+                    'total_duration': total_duration
+                })
+                current_operation = operation
+            elif start_time > current_time:
+                upcoming_operations.append({
+                    'order_code': order.order_code,
+                    'operation_name': operation.name,
+                    'start_time_str': start_time.strftime('%H:%M:%S'),
+                    'end_time_str': end_time.strftime('%H:%M:%S'),
+                    'duration': format_duration((end_time - start_time).total_seconds())
+                })
+        
+        # Add upcoming operations and full schedule to machine status
+        machine_status[machine_id]['upcoming_operations'] = upcoming_operations[:2]
+        machine_status[machine_id]['full_schedule'] = full_schedule
+        
+        # If machine is idle, ensure all fields are properly set
+        if not current_operation and not upcoming_operations:
+            machine_status[machine_id].update({
+                'status': 'idle',
+                'current_order': None,
+                'current_operation': None,
+                'progress_percentage': 0,
+                'remaining_time': 0,
+                'start_time': None,
+                'end_time': None,
+                'operation_duration': "00:00:00",
+                'elapsed_time': "00:00:00"
+            })
     
     return machine_status
 
@@ -287,7 +230,7 @@ def get_min_processing_time(operation):
 def index():
     # Use the global orders instead of loading from CSV
     global orders
-    
+    total_orders = len(orders)
     # Schedule orders
     machine_schedule, order_status, halted_orders = schedule_orders(orders)
     
@@ -313,20 +256,18 @@ def index():
         else:
             orders_by_status[order.status].append(order)
     
-    # Get machine status
-    machine_status = get_machine_status(orders)
+    machine_status = get_machine_status(orders, machine_schedule)
     
     return render_template('index.html',
-                         orders=orders,
+                         machine_status=machine_status,
+                         current_time=datetime.now().isoformat(),  # Convert to ISO format
+                         format_duration=format_duration,
                          total_orders=total_orders,
                          total_remaining_time=total_remaining_time,
                          total_progress=total_progress,
                          orders_by_status=orders_by_status,
                          OperationStatus=OperationStatus,
-                         machine_status=machine_status,
-                         current_time=datetime.now(),
                          machine_schedule=machine_schedule,
-                         format_duration=format_duration,
                          calculate_total_order_time=calculate_total_order_time,
                          min=min,
                          get_min_processing_time=get_min_processing_time,

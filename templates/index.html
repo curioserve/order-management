@@ -147,6 +147,75 @@
         .btn-danger i {
             margin-right: 5px;
         }
+        .machine-card {
+            transition: transform 0.2s;
+            height: 100%;
+        }
+
+        .machine-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .schedule-viewer {
+            border-top: 1px solid #eee;
+            padding-top: 1rem;
+        }
+
+        .schedule-item {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 1rem;
+            margin: 0.5rem 0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            transition: transform 0.2s;
+        }
+
+        .schedule-item:hover {
+            transform: translateX(5px);
+        }
+
+        .op-counter {
+            font-weight: 500;
+            color: #666;
+            padding: 0 1rem;
+        }
+
+        .progress-bar-animated {
+            transition: width 0.5s linear;
+        }
+
+        .machine-card.busy {
+            border-left: 4px solid #ffc107;
+            background: #fff9e6;
+        }
+
+        .machine-card.idle {
+            border-left: 4px solid #28a745;
+            background: #f0fff4;
+        }
+
+        .btn-sm {
+            padding: 0.25rem 0.5rem;
+            font-size: 0.8rem;
+        }
+
+        .schedule-display {
+            min-height: 120px;
+            border: 1px solid #eee;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            background: #f8f9fa;
+        }
+
+        .schedule-item {
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
     </style>
 </head>
 <body>
@@ -187,7 +256,7 @@
                 <div class="row">
                     {% for machine, status in machine_status.items() %}
                     <div class="col-md-4 mb-3">
-                        <div class="card">
+                        <div class="card machine-card">
                             <div class="card-body">
                                 <h5 class="card-title">{{ machine }}</h5>
                                 <p class="card-text">
@@ -195,14 +264,54 @@
                                         {{ status.status|upper }}
                                     </span>
                                 </p>
+                                
                                 {% if status.status == 'busy' %}
-                                <p class="card-text">
-                                    Current Order: {{ status.current_order }}<br>
-                                    Operation: {{ status.current_operation }}<br>
-                                    Start: {{ status.start_time.strftime('%H:%M:%S') }}<br>
-                                    End: {{ status.end_time.strftime('%H:%M:%S') }}
-                                </p>
+                                <div class="current-operation">
+                                    <h6>Current Operation</h6>
+                                    <p class="mb-1">Order: {{ status.current_order }}</p>
+                                    <p class="mb-1">Operation: {{ status.current_operation }}</p>
+                                    <div class="progress mt-2">
+                                        <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                                             role="progressbar" 
+                                             style="width: {{ status.progress_percentage|round(1) }}%"
+                                             data-start-time="{{ status.start_time.isoformat() if status.start_time }}"
+                                             data-end-time="{{ status.end_time.isoformat() if status.end_time }}">
+                                            {{ status.progress_percentage|round(1) }}%
+                                        </div>
+                                    </div>
+                                    <div class="time-info mt-2">
+                                        <small class="text-muted">
+                                            {{ status.elapsed_time }} / {{ status.operation_duration }}
+                                        </small>
+                                    </div>
+                                </div>
                                 {% endif %}
+
+                                <div class="schedule-viewer mt-3">
+                                    <h6>Scheduled Operations</h6>
+                                    <div class="schedule-display" id="schedule-{{ machine }}">
+                                        {% if status.full_schedule %}
+                                        <div class="schedule-item">
+                                            <p class="mb-1"><strong>Order:</strong> {{ status.full_schedule[0].order_code }}</p>
+                                            <p class="mb-1"><strong>Operation:</strong> {{ status.full_schedule[0].operation_name }}</p>
+                                            <p class="mb-1"><strong>Start:</strong> {{ status.full_schedule[0].start_time_str }}</p>
+                                            <p class="mb-1"><strong>End:</strong> {{ status.full_schedule[0].end_time_str }}</p>
+                                            <p class="mb-0"><strong>Duration:</strong> {{ status.full_schedule[0].duration }}</p>
+                                        </div>
+                                        {% else %}
+                                        <div class="text-muted">No scheduled operations</div>
+                                        {% endif %}
+                                    </div>
+                                    <div class="mt-2 d-flex justify-content-between">
+                                        <button class="btn btn-sm btn-primary prev-op" data-machine="{{ machine }}">
+                                            <i class="bi bi-chevron-left"></i> Previous
+                                        </button>
+                                        <span class="op-counter"></span>
+                                        <button class="btn btn-sm btn-primary next-op" data-machine="{{ machine }}">
+                                            Next <i class="bi bi-chevron-right"></i>
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -368,6 +477,46 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
 
     <script>
+    function formatDuration(seconds) {
+        const hours = Math.floor(seconds / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+        const secs = Math.floor(seconds % 60);
+        return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
+
+    function updateMachineProgress() {
+        const now = new Date();
+        
+        document.querySelectorAll('.machine-card').forEach(card => {
+            const progressBar = card.querySelector('.progress-bar');
+            const timeInfo = card.querySelector('.time-info small');
+            
+            if (progressBar?.dataset.startTime && progressBar.dataset.endTime) {
+                const startTime = new Date(progressBar.dataset.startTime);
+                const endTime = new Date(progressBar.dataset.endTime);
+                const totalDuration = (endTime - startTime) / 1000;
+                
+                if (now >= startTime) {
+                    const elapsed = Math.min((now - startTime) / 1000, totalDuration);
+                    const progress = Math.min(100, (elapsed / totalDuration) * 100);
+                    
+                    // Update progress bar immediately
+                    progressBar.style.width = `${progress}%`;
+                    progressBar.textContent = `${progress.toFixed(1)}%`;
+                    
+                    if (timeInfo) {
+                        timeInfo.textContent = `${formatDuration(elapsed)} / ${formatDuration(totalDuration)}`;
+                    }
+                }
+            }
+        });
+    }
+
+    function updateAllProgress() {
+        updateProgress();
+        updateMachineProgress();
+    }
+
     function updateProgress() {
         const now = new Date();
         const progressBars = document.querySelectorAll('.progress-bar');
@@ -435,10 +584,108 @@
         }
     }
 
-    // Update every second
-    setInterval(updateProgress, 1000);
-    // Initial update
-    updateProgress();
+    // Machine schedule cycling logic
+    const machineSchedules = {
+        {% for machine, status in machine_status.items() %}
+        "{{ machine }}": {{ status.full_schedule|tojson|safe }},
+        {% endfor %}
+    };
+
+    // Initialize machine schedules with proper data handling
+    function initializeMachineSchedules() {
+        document.querySelectorAll('.machine-card').forEach(card => {
+            const machineId = card.dataset.machine;
+            const schedule = machineSchedules[machineId].map(op => ({
+                ...op,
+                start_time: new Date(op.start_time),
+                end_time: new Date(op.end_time),
+                start_time_str: new Date(op.start_time).toLocaleTimeString(),
+                end_time_str: new Date(op.end_time).toLocaleTimeString()
+            })).sort((a, b) => a.start_time - b.start_time);
+            
+            let currentIndex = 0;
+
+            // Find current operation index
+            const now = Date.now();
+            currentIndex = schedule.findIndex(op => 
+                op.start_time <= now && now <= op.end_time
+            );
+            currentIndex = Math.max(currentIndex, 0);
+
+            // Initialize display
+            const updateDisplay = () => {
+                const op = schedule[currentIndex];
+                const display = card.querySelector('.schedule-display');
+                
+                display.innerHTML = op ? `
+                    <div class="schedule-item">
+                        <p class="mb-1"><strong>Order:</strong> ${op.order_code}</p>
+                        <p class="mb-1"><strong>Operation:</strong> ${op.operation_name}</p>
+                        <p class="mb-1"><strong>Start:</strong> ${op.start_time_str}</p>
+                        <p class="mb-1"><strong>End:</strong> ${op.end_time_str}</p>
+                        <p class="mb-0"><strong>Duration:</strong> ${op.duration}</p>
+                    </div>
+                ` : '<div class="text-muted">No scheduled operations</div>';
+                
+                card.querySelector('.op-counter').textContent = 
+                    `${currentIndex + 1}/${schedule.length}`;
+            };
+
+            // Navigation handlers
+            card.querySelector('.next-op').addEventListener('click', () => {
+                if (currentIndex < schedule.length - 1) {
+                    currentIndex++;
+                    updateDisplay();
+                }
+            });
+
+            card.querySelector('.prev-op').addEventListener('click', () => {
+                if (currentIndex > 0) {
+                    currentIndex--;
+                    updateDisplay();
+                }
+            });
+
+            // Initial display
+            updateDisplay();
+            
+            // Auto-update current operation
+            setInterval(() => {
+                const now = Date.now();
+                const newIndex = schedule.findIndex(op => 
+                    op.start_time <= now && now <= op.end_time
+                );
+                if (newIndex !== -1 && newIndex !== currentIndex) {
+                    currentIndex = newIndex;
+                    updateDisplay();
+                }
+            }, 1000);
+        });
+    }
+
+    // Initialize after DOM loads
+    document.addEventListener('DOMContentLoaded', () => {
+        // Initialize everything immediately
+        initializeMachineSchedules();
+        updateAllProgress();
+        
+        // Real-time update engine
+        const updateEngine = () => {
+            updateAllProgress();
+            requestAnimationFrame(updateEngine);
+        };
+        
+        // Start the animation frame loop
+        requestAnimationFrame(updateEngine);
+        
+        // Backup interval for operations that don't need 60fps
+        const backupInterval = setInterval(updateAllProgress, 1000);
+        
+        // Cleanup
+        window.addEventListener('beforeunload', () => {
+            clearInterval(backupInterval);
+        });
+    });
     </script>
 </body>
 </html> 

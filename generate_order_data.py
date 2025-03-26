@@ -71,6 +71,6 @@ def save_to_csv(orders, filename='orders_data.csv'):
         writer.writerows(orders)
 
 if __name__ == '__main__':
-    orders = generate_orders(2000)  # Generate 2000 orders
+    orders = generate_orders(20)  # Generate 2000 orders
     save_to_csv(orders)
     print(f"Generated {len(orders)} order operations")
