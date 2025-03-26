@@ -1,9 +1,9 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, session
+import csv
 from OrderManagment import Order, Operation, OperationStatus
 from datetime import datetime, timedelta
 from collections import defaultdict
 import json
-import random
 
 app = Flask(__name__)
 app.secret_key = 'your-secret-key-here'  # Required for flash messages
@@ -11,65 +11,40 @@ app.secret_key = 'your-secret-key-here'  # Required for flash messages
 # Global variable to store orders
 orders = {}
 
-def generate_orders(num_orders=2000):
+def load_orders_from_csv():
     global orders
-    if not orders:  # Only generate if orders is empty
-        operations = [
-            "Cutting", "Drilling", "Milling", "Turning", "Grinding", "Welding",
-            "Assembly", "Testing", "Quality Control", "Packaging", "Shipping"
-        ]
-        
-        # Total time per order: 5 minutes = 300 seconds
-        TOTAL_ORDER_TIME = 300
-        MAX_OPERATION_TIME = 600  # Maximum 10 minutes per operation
-        
-        # Generate orders
-        for i in range(num_orders):
-            order_code = f"ORD{i+1:04d}"
-            quantity = random.randint(10, 100)
-            
-            # Create new order
-            orders[order_code] = Order(
-                order_code=order_code,
-                quantity=quantity
-            )
-            orders[order_code].status = OperationStatus.PENDING
-            orders[order_code].start_time = None
-            orders[order_code].completion_time = None
-            
-            # Generate 4-8 operations per order
-            num_operations = random.randint(4, 8)
-            remaining_time = TOTAL_ORDER_TIME
-            
-            for j in range(num_operations):
-                operation_id = f"OP{j+1:02d}"
-                operation_name = random.choice(operations)
+    if not orders:  # Only load if orders is empty
+        orders = {}
+        with open('orders_data.csv', 'r') as file:
+            reader = csv.DictReader(file)
+            for row in reader:
+                order_code = row['order_code']
+                if order_code not in orders:
+                    orders[order_code] = Order(
+                        order_code=order_code,
+                        quantity=int(row['quantity'])
+                    )
+                    # Ensure order starts as PENDING
+                    orders[order_code].status = OperationStatus.PENDING
+                    orders[order_code].start_time = None
+                    orders[order_code].completion_time = None
                 
-                # Generate 2-4 capable machines per operation
-                num_machines = random.randint(2, 4)
-                capable_machines = [f"M{k}" for k in random.sample(range(1, 46), num_machines)]
+                # Parse capable machines
+                capable_machines = row['capable_machines'].split(',')
                 
-                # Calculate operation time
-                if j == num_operations - 1:  # Last operation gets remaining time
-                    operation_time = remaining_time
-                else:
-                    max_time = min(remaining_time - (30 * (num_operations - j - 1)), MAX_OPERATION_TIME)
-                    operation_time = random.randint(30, max_time)
-                    remaining_time -= operation_time
-                
-                # Generate processing times for each machine
+                # Parse processing times (in seconds)
                 processing_times = {}
-                for machine in capable_machines:
-                    variation = random.uniform(0.9, 1.1)
-                    processing_times[machine] = int(operation_time * variation)
+                for pt in row['processing_times'].split(';'):
+                    machine, time = pt.split(':')
+                    processing_times[machine] = float(time)
                 
-                # Add operation to order
+                # Add operation to order with PENDING status
                 operation = Operation(
-                    operation_id=operation_id,
-                    name=operation_name,
+                    operation_id=row['operation_id'],
+                    name=row['operation_name'],
                     capable_machines=capable_machines,
                     processing_times=processing_times,
-                    sequence_number=j + 1
+                    sequence_number=int(row['sequence_number'])
                 )
                 operation.status = OperationStatus.PENDING
                 operation.start_time = None
@@ -78,11 +53,11 @@ def generate_orders(num_orders=2000):
                 operation.completed_quantity = 0
                 
                 orders[order_code].add_operation(
-                    operation_id=operation_id,
-                    name=operation_name,
+                    operation_id=row['operation_id'],
+                    name=row['operation_name'],
                     capable_machines=capable_machines,
                     processing_times=processing_times,
-                    sequence_number=j + 1
+                    sequence_number=int(row['sequence_number'])
                 )
     return orders
 
@@ -437,12 +412,11 @@ def unforce_order():
 def reset():
     global orders
     orders = {}  # Clear the orders
-    generate_orders()  # Regenerate orders
+    load_orders_from_csv()  # Reload from CSV
     flash('System has been reset', 'success')
     return redirect(url_for('index'))
 
 if __name__ == '__main__':
-    generate_orders()  # Generate initial orders
-    import os
-    port = int(os.environ.get('PORT', 5001))
-    app.run(host='0.0.0.0', port=port, debug=True)
+    # Initialize orders when starting the app
+    load_orders_from_csv()
+    app.run(debug=True)
