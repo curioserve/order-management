@@ -53,21 +53,42 @@
     margin: 15px 0;
 }
 
-.progress-bar {
-    height: 20px;
-    background-color: #218bf5;
-    border-radius: 10px;
-    overflow: hidden;
-    position: relative;
+.progress {
+    background-color: #e9ecef !important;
+    height: 1.5rem !important;
+    margin-top: 0.5rem !important;
+    margin-bottom: 0.5rem !important;
+    border-radius: 0.25rem !important;
 }
 
-.progress {
-    height: 100%;
-    background: linear-gradient(90deg, #4e73df, #224abe);
+.progress .progress-bar,
+.progress-bar {
+    background: linear-gradient(90deg, #4e73df, #224abe) !important;
+    color: white !important;
     transition: width 0.3s ease;
     display: flex;
     align-items: center;
     justify-content: center;
+    font-weight: bold;
+    text-shadow: 1px 1px 2px rgba(0,0,0,0.2);
+}
+
+.progress-bar-striped,
+.progress .progress-bar-striped {
+    background-image: linear-gradient(45deg, 
+        rgba(255, 255, 255, .15) 25%, 
+        transparent 25%, 
+        transparent 50%, 
+        rgba(255, 255, 255, .15) 50%, 
+        rgba(255, 255, 255, .15) 75%, 
+        transparent 75%, 
+        transparent) !important;
+    background-size: 1rem 1rem;
+}
+
+.progress-bar-animated,
+.progress .progress-bar-animated {
+    animation: progress-bar-stripes 1s linear infinite;
 }
 
 .progress-text {
@@ -112,22 +133,116 @@
     display: block;
 }
 
-/* Override Bootstrap progress bar colors for machine status */
+/* More specific progress bar styles to override Bootstrap */
+.progress-bar,
+.progress .progress-bar,
+.progress-bar.progress-bar-striped,
+.progress-bar.progress-bar-animated,
 .progress .progress-bar-striped,
-.progress .progress-bar-animated,
-.progress-bar.progress-bar-striped, 
-.progress-bar.progress-bar-animated {
-    background-color: #4e73df !important;
+.progress .progress-bar-animated {
+    background: linear-gradient(90deg, #4e73df, #224abe) !important;
+    color: rgb(145, 16, 16) !important;
+    transition: width 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    text-shadow: 1px 1px 2px rgba(0,0,0,0.2);
+}
+
+/* Striped pattern overlay */
+.progress-bar-striped,
+.progress .progress-bar-striped {
+    background-image: linear-gradient(45deg, 
+        rgba(255, 255, 255, .15) 25%, 
+        transparent 25%, 
+        transparent 50%, 
+        rgba(255, 255, 255, .15) 50%, 
+        rgba(255, 255, 255, .15) 75%, 
+        transparent 75%, 
+        transparent) !important;
+    background-size: 1rem 1rem;
+}
+
+/* Animation for striped bars */
+.progress-bar-animated,
+.progress .progress-bar-animated {
+    animation: progress-bar-stripes 1s linear infinite;
+}
+
+/* Ensure the progress container has proper styling */
+.progress {
+    background-color: #e9ecef !important;
+    height: 1.5rem !important;
+    margin-top: 0.5rem !important;
+    margin-bottom: 0.5rem !important;
+    border-radius: 0.25rem !important;
+}
+
+/* Additional specificity for operation progress */
+.operation-block .progress .progress-bar,
+.operation-block .progress-bar {
+    background: linear-gradient(90deg, #4e73df, #224abe) !important;
     color: white !important;
 }
 
+@keyframes progress-bar-stripes {
+    from { background-position: 1rem 0; }
+    to { background-position: 0 0; }
+}
+
+/* Direct targeting of progress bar elements */
+.progress-bar,
+.progress-bar-striped,
+.progress-bar-animated,
+div.progress-bar,
+div.progress-bar-striped,
+div.progress-bar-animated {
+    background-color: #4e73df !important;  /* Solid blue fallback */
+    background: linear-gradient(90deg, #4e73df, #224abe) !important;
+    color: white !important;
+}
+
+/* Extra specific selectors for the progress bar */
+.progress > .progress-bar,
+.progress > .progress-bar-striped,
+.progress > .progress-bar-animated {
+    background-color: #4e73df !important;
+    background: linear-gradient(90deg, #4e73df, #224abe) !important;
+    color: white !important;
+}
+
+/* Ensure striped overlay is visible */
 .progress-bar-striped {
-    background-image: linear-gradient(45deg, rgba(255, 255, 255, .15) 25%, transparent 25%, transparent 50%, rgba(255, 255, 255, .15) 50%, rgba(255, 255, 255, .15) 75%, transparent 75%, transparent) !important;
+    background-image: linear-gradient(
+        45deg,
+        rgba(255, 255, 255, 0.15) 25%,
+        transparent 25%,
+        transparent 50%,
+        rgba(255, 255, 255, 0.15) 50%,
+        rgba(255, 255, 255, 0.15) 75%,
+        transparent 75%,
+        transparent
+    ) !important;
+    background-size: 1rem 1rem !important;
 }
 
-/* Add specific override for machine-status progress bars */
-.machine-card .progress-bar,
-.current-operation .progress-bar {
+/* Override any Bootstrap background colors */
+.bg-primary.progress-bar,
+.bg-info.progress-bar,
+.progress-bar-striped.bg-info,
+.progress-bar-animated.bg-info {
     background-color: #4e73df !important;
-    color: white !important;
+    background: linear-gradient(90deg, #4e73df, #224abe) !important;
+}
+
+/* Ensure proper contrast */
+.progress {
+    background-color: #e9ecef !important;
+}
+
+/* Animation keyframes */
+@keyframes progress-bar-stripes {
+    from { background-position: 1rem 0; }
+    to { background-position: 0 0; }
 }

@@ -1,5 +1,11 @@
 <div class="machine-status-container">
     <h2>Machine Status</h2>
+    
+    <!-- Added Global Elapsed Time Display -->
+    <div class="global-time-info mb-3">
+        <h4>Session Elapsed Time: <span id="global-elapsed">{{ format_duration(0) }}</span></h4>
+    </div>
+    
     <div class="machine-grid">
         {% for machine_id, status in machine_status.items() %}
         <div class="machine-card {% if status.status == 'busy' %}busy{% else %}idle{% endif %}" 
@@ -27,7 +33,7 @@
                         </div>
                         
                         <div class="time-info">
-                            <p>Elapsed: <span class="elapsed">{{ format_duration(0) }}</span></p>
+                            <!-- Removed elapsed time display -->
                             <p>Remaining: <span class="remaining">{{ format_duration(status.remaining_time) }}</span></p>
                         </div>
                     </div>
@@ -217,6 +223,21 @@
     from { width: 0%; }
     to { width: 100%; }
 }
+
+.global-time-info {
+    background-color: #f8f9fa;
+    padding: 10px 15px;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    margin-bottom: 20px;
+    text-align: center;
+    font-weight: bold;
+}
+
+#global-elapsed {
+    color: #007bff;
+    font-size: 1.2em;
+}
 </style>
 
 <script>
@@ -239,49 +260,126 @@ function formatDuration(seconds) {
     }
 }
 
-function updateMachineStatus() {
-    fetch('/api/machine_status')
-        .then(response => response.json())
-        .then(data => {
-            Object.entries(data).forEach(([machineId, status]) => {
-                const card = document.querySelector(`[data-machine-id="${machineId}"]`);
-                if (!card) return;
+// Store the session start time
+const sessionStartTime = Date.now() / 1000;
 
-                // Update status class
-                card.className = `machine-card ${status.status}`;
-
-                // Update status badge
-                const badge = card.querySelector('.status-badge');
-                if (badge) {
-                    badge.className = `status-badge ${status.status}`;
-                    badge.textContent = status.status === 'busy' ? 'In Progress' : 'Idle';
-                }
-
-                if (status.status === 'busy') {
-                    // Update order and operation
-                    card.querySelector('.current-order').textContent = status.current_order;
-                    card.querySelector('.current-operation').textContent = status.current_operation;
-
-                    // Update progress bar
-                    const progressBar = card.querySelector('.progress-bar');
-                    if (progressBar) {
-                        progressBar.style.width = `${status.progress}%`;
-                        progressBar.textContent = `${status.progress.toFixed(1)}%`;
-                    }
-
-                    // Update time info
-                    const elapsed = (Date.now() - status.start_time * 1000) / 1000;
-                    card.querySelector('.elapsed').textContent = formatDuration(elapsed);
-                    card.querySelector('.remaining').textContent = formatDuration(status.remaining);
-                }
-            });
-        })
-        .catch(err => console.error('Error fetching status:', err));
+// Just update the timers based on the data attributes - NO API CALLS
+function updateTimers() {
+    const now = Date.now() / 1000; // Current time in seconds
+    
+    // Update global elapsed time
+    const globalElapsed = now - sessionStartTime;
+    const globalElapsedElement = document.getElementById('global-elapsed');
+    if (globalElapsedElement) {
+        globalElapsedElement.textContent = formatDuration(globalElapsed);
+    }
+    
+    document.querySelectorAll('.progress-bar[data-start]').forEach(progressBar => {
+        const startTime = parseFloat(progressBar.getAttribute('data-start'));
+        const endTime = parseFloat(progressBar.getAttribute('data-end'));
+        
+        if (startTime && endTime) {
+            // Calculate remaining time
+            const remaining = Math.max(0, endTime - now);
+            
+            // Find the parent card
+            const timeInfo = progressBar.closest('.machine-card').querySelector('.time-info');
+            if (timeInfo) {
+                const remainingElement = timeInfo.querySelector('.remaining');
+                
+                if (remainingElement) remainingElement.textContent = formatDuration(remaining);
+            }
+            
+            // Update progress percentage
+            const totalDuration = endTime - startTime;
+            if (totalDuration > 0) {
+                const progress = Math.min(100, ((now - startTime) / totalDuration) * 100);
+                progressBar.style.width = `${progress.toFixed(1)}%`;
+                progressBar.textContent = `${progress.toFixed(1)}%`;
+            }
+        }
+    });
 }
 
-// Initial update
-updateMachineStatus();
+// Even stronger API call blocking
+// BLOCK ALL API CALLS that might interfere with our timers
+const originalFetch = window.fetch;
+window.fetch = function(url, options) {
+    // If this is a request to /machine_status, block it
+    if (url === '/machine_status' || url.startsWith('/machine_status?') || 
+        url === '/api/machine_status' || url.startsWith('/api/machine_status?')) {
+        console.log('Blocked request to machine_status endpoint');
+        return Promise.resolve(new Response('{"blocked": true}', {
+            status: 200,
+            headers: {'Content-Type': 'application/json'}
+        }));
+    }
+    
+    // Otherwise, proceed with the original fetch
+    return originalFetch(url, options);
+};
 
-// Update every second
-setInterval(updateMachineStatus, 1000);
+// ALSO BLOCK XMLHttpRequest
+const originalXHROpen = XMLHttpRequest.prototype.open;
+XMLHttpRequest.prototype.open = function(method, url, ...rest) {
+    if (url === '/machine_status' || url.startsWith('/machine_status?') ||
+        url === '/api/machine_status' || url.startsWith('/api/machine_status?')) {
+        console.log('Blocked XMLHttpRequest to machine_status endpoint');
+        // This effectively makes the request do nothing
+        return originalXHROpen.call(this, method, 'about:blank', ...rest);
+    }
+    return originalXHROpen.call(this, method, url, ...rest);
+};
+
+// Disable any updateEngine function that might exist
+window.updateEngine = function() {
+    console.log('Disabled updateEngine function');
+    return false;
+};
+
+// Disable any auto-refresh or reload functions
+window.location.reload = function() {
+    console.log('Blocked page reload attempt');
+    return false;
+};
+
+// Block all ajax calls via jQuery if it's loaded
+if (typeof $ !== 'undefined') {
+    const originalAjax = $.ajax;
+    $.ajax = function(options) {
+        if (options.url && (options.url.includes('machine_status'))) {
+            console.log('Blocked jQuery ajax call to machine_status');
+            return { done: function() { return this; }, fail: function() { return this; } };
+        }
+        return originalAjax.apply(this, arguments);
+    };
+}
+
+// Add a MutationObserver to detect and prevent unwanted DOM changes
+const observer = new MutationObserver(mutations => {
+    mutations.forEach(mutation => {
+        if (mutation.type === 'childList') {
+            // If someone is trying to replace our time elements, prevent it
+            const timeInfos = document.querySelectorAll('.time-info');
+            timeInfos.forEach(timeInfo => {
+                if (mutation.target === timeInfo || timeInfo.contains(mutation.target)) {
+                    console.log('Detected unwanted DOM change to time elements!');
+                    mutation.stopPropagation(); // Try to stop the mutation
+                }
+            });
+        }
+    });
+});
+
+// Start observing the entire document
+observer.observe(document.documentElement, {
+    childList: true,
+    subtree: true
+});
+
+// Run timer updates every 100ms for smooth counting - NO API CALLS!
+setInterval(updateTimers, 100);
+
+// Log when this script runs
+console.log('Machine status timers initialized at ' + new Date().toISOString());
 </script>
