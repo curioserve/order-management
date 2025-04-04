@@ -147,12 +147,27 @@ class Order:
         total_operations = len(self.operations)
         completed_operations = sum(1 for op in self.operations if op.status == OperationStatus.COMPLETED)
         
-        if completed_operations == 0:
-            return 0.0
+        if self.status == OperationStatus.COMPLETED:
+            return 100.0
         
-        # Calculate weighted progress based on completed quantities
-        total_weight = sum(op.completed_quantity for op in self.operations if op.status == OperationStatus.COMPLETED)
-        return (total_weight / (self.quantity * total_operations)) * 100
+        if completed_operations == total_operations:
+            # All operations are complete, order should be marked complete
+            self.complete_order()
+            return 100.0
+        
+        # Calculate progress for each operation
+        operation_progress = []
+        for op in self.operations:
+            if op.status == OperationStatus.COMPLETED:
+                operation_progress.append(100.0)
+            elif op.status == OperationStatus.IN_PROGRESS:
+                # Get actual progress for in-progress operation
+                operation_progress.append(op.get_progress_percentage())
+            else:
+                operation_progress.append(0.0)
+        
+        # Calculate overall progress
+        return sum(operation_progress) / total_operations
     
     def get_remaining_time(self) -> float:
         """
@@ -255,9 +270,17 @@ class Order:
                 f"Operations:\n{operations_str}")
 
     def force_order(self) -> None:
-        """Mark the order as forced and set force time"""
+        """Mark order as forced and halt conflicting operations"""
         self.is_forced = True
         self.force_time = datetime.now()
+        
+        # Halt all operations that are using our required machines
+        required_machines = set()
+        for op in self.operations:
+            required_machines.update(op.capable_machines)
+        
+        # This should be called from the scheduling logic to actually halt others
+        # (implementation shown in the schedule_orders function above)
 
     def unforce_order(self) -> None:
         """Remove force status from the order"""
@@ -302,6 +325,13 @@ class Order:
     def is_operation_halted(self, operation_id: str) -> bool:
         """Check if an operation is halted"""
         return operation_id in self.halted_operations
+
+    def get_remaining_processing_time(self, operation_id):
+        """Get remaining time for halted operation"""
+        if operation_id in self.halted_operations:
+            halted_data = self.halted_operations[operation_id]
+            return halted_data['remaining_time']
+        return 0
 
 # Example usage:
 if __name__ == "__main__":

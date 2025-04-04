@@ -256,7 +256,9 @@
                 <div class="row">
                     {% for machine, status in machine_status.items() %}
                     <div class="col-md-4 mb-3">
-                        <div class="card machine-card">
+                        <div class="card machine-card {% if status.status == 'busy' %}busy{% else %}idle{% endif %}" 
+                             data-machine-id="{{ machine }}"
+                             data-schedule="{{ status.full_schedule|tojson|forceescape }}">
                             <div class="card-body">
                                 <h5 class="card-title">{{ machine }}</h5>
                                 <p class="card-text">
@@ -289,27 +291,23 @@
 
                                 <div class="schedule-viewer mt-3">
                                     <h6>Scheduled Operations</h6>
+                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                        <button class="btn btn-sm btn-secondary prev-op">&lt; Prev</button>
+                                        <span class="op-counter"></span>
+                                        <button class="btn btn-sm btn-secondary next-op">Next &gt;</button>
+                                    </div>
                                     <div class="schedule-display" id="schedule-{{ machine }}">
                                         {% if status.full_schedule %}
                                         <div class="schedule-item">
-                                            <p class="mb-1"><strong>Order:</strong> {{ status.full_schedule[0].order_code }}</p>
-                                            <p class="mb-1"><strong>Operation:</strong> {{ status.full_schedule[0].operation_name }}</p>
-                                            <p class="mb-1"><strong>Start:</strong> {{ status.full_schedule[0].start_time_str }}</p>
-                                            <p class="mb-1"><strong>End:</strong> {{ status.full_schedule[0].end_time_str }}</p>
-                                            <p class="mb-0"><strong>Duration:</strong> {{ status.full_schedule[0].duration }}</p>
+                                            <p class="mb-1"><strong>Order:</strong> ${op.order_code}</p>
+                                            <p class="mb-1"><strong>Operation:</strong> ${op.operation_name}</p>
+                                            <p class="mb-1"><strong>Start:</strong> <span class="start-time-display">${op.start_time_str}</span></p>
+                                            <p class="mb-1"><strong>End:</strong> <span class="end-time-display">${op.end_time_str}</span></p>
+                                            <p class="mb-0"><strong>Duration:</strong> ${op.duration}</p>
                                         </div>
                                         {% else %}
                                         <div class="text-muted">No scheduled operations</div>
                                         {% endif %}
-                                    </div>
-                                    <div class="mt-2 d-flex justify-content-between">
-                                        <button class="btn btn-sm btn-primary prev-op" data-machine="{{ machine }}">
-                                            <i class="bi bi-chevron-left"></i> Previous
-                                        </button>
-                                        <span class="op-counter"></span>
-                                        <button class="btn btn-sm btn-primary next-op" data-machine="{{ machine }}">
-                                            Next <i class="bi bi-chevron-right"></i>
-                                        </button>
                                     </div>
                                 </div>
                             </div>
@@ -471,6 +469,39 @@
                 </div>
                 {% endfor %}
             </div>
+
+            <!-- Add halted orders section -->
+            <div class="col-md-4 order-section">
+                <h2>Halted Orders</h2>
+                {% for order in halted_orders %}
+                <div class="order-card halted">
+                    <div class="order-header">
+                        <h3>Order {{ order.order_code }}</h3>
+                        <span class="halted-badge">HALTED</span>
+                    </div>
+                    <div class="operations-list">
+                        {% for operation in order.operations %}
+                        <div class="operation-block {% if order.is_operation_halted(operation.operation_id) %}operation-halted{% endif %}">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <span>{{ operation.name }} ({{ operation.sequence_number }})</span>
+                                {% if order.is_operation_halted(operation.operation_id) %}
+                                <span>Halted on {{ operation.assigned_machine }}</span>
+                                {% endif %}
+                            </div>
+                            <div class="operation-progress">
+                                <div class="progress">
+                                    <div class="progress-bar bg-warning" 
+                                         style="width: {{ order.get_halted_progress(operation.operation_id) }}%">
+                                        {{ "%.1f"|format(order.get_halted_progress(operation.operation_id)) }}%
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
         </div>
     </div>
 
@@ -478,10 +509,24 @@
 
     <script>
     function formatDuration(seconds) {
-        const hours = Math.floor(seconds / 3600);
+        if (seconds < 0) {
+            return "0D 0H 0M 0S";
+        }
+        
+        // Convert to days, hours, minutes, and seconds
+        const days = Math.floor(seconds / 86400);
+        const hours = Math.floor((seconds % 86400) / 3600);
         const minutes = Math.floor((seconds % 3600) / 60);
         const secs = Math.floor(seconds % 60);
-        return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+        
+        // Format based on the duration
+        if (days > 0) {
+            return `${days}D ${hours}H ${minutes}M ${secs}S`;
+        } else if (hours > 0) {
+            return `${hours}H ${minutes}M ${secs}S`;
+        } else {
+            return `${minutes}M ${secs}S`;
+        }
     }
 
     function updateMachineProgress() {
@@ -534,6 +579,8 @@
             
             operations.forEach(operation => {
                 const progressBar = operation.querySelector('.progress-bar');
+                if (!progressBar) return; // Skip if no progress bar
+                
                 orderOperations++;
                 
                 // Handle in-progress operations
@@ -546,9 +593,11 @@
                         const elapsed = now - startTime;
                         const progress = (elapsed / totalDuration) * 100;
                         progressBar.style.width = `${Math.min(100, progress)}%`;
+                        progressBar.textContent = `${progress.toFixed(1)}%`;
                         orderProgress += progress;
                     } else if (now > endTime) {
                         progressBar.style.width = '100%';
+                        progressBar.textContent = '100%';
                         orderProgress += 100;
                     }
                 }
@@ -567,12 +616,10 @@
                 const endTime = new Date(display.dataset.endTime);
                 
                 if (now >= startTime && now <= endTime) {
-                    const remaining = endTime - now;
-                    const minutes = Math.floor(remaining / 60000);
-                    const seconds = Math.floor((remaining % 60000) / 1000);
-                    display.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+                    const remaining = (endTime - now) / 1000; // Convert milliseconds to seconds
+                    display.textContent = formatDuration(remaining);
                 } else if (now > endTime) {
-                    display.textContent = '0:00';
+                    display.textContent = '0D0H';
                 }
             }
         });
@@ -580,7 +627,7 @@
         // Update completion percentage
         if (totalOperations > 0) {
             const averageProgress = totalProgress / totalOperations;
-            document.getElementById('totalCompletion').textContent = `${averageProgress.toFixed(3)}%`;
+            document.getElementById('totalCompletion').textContent = `${averageProgress.toFixed(1)}%`;
         }
     }
 
@@ -591,101 +638,155 @@
         {% endfor %}
     };
 
-    // Initialize machine schedules with proper data handling
+    // Store current schedule indices
+    const scheduleIndices = new Map();
+
     function initializeMachineSchedules() {
         document.querySelectorAll('.machine-card').forEach(card => {
-            const machineId = card.dataset.machine;
-            const schedule = machineSchedules[machineId].map(op => ({
-                ...op,
-                start_time: new Date(op.start_time),
-                end_time: new Date(op.end_time),
-                start_time_str: new Date(op.start_time).toLocaleTimeString(),
-                end_time_str: new Date(op.end_time).toLocaleTimeString()
-            })).sort((a, b) => a.start_time - b.start_time);
+            const machineId = card.dataset.machineId;
+            const scheduleData = card.dataset.schedule;
+            if (!scheduleData) return;
             
-            let currentIndex = 0;
-
-            // Find current operation index
-            const now = Date.now();
-            currentIndex = schedule.findIndex(op => 
-                op.start_time <= now && now <= op.end_time
-            );
-            currentIndex = Math.max(currentIndex, 0);
-
-            // Initialize display
-            const updateDisplay = () => {
-                const op = schedule[currentIndex];
-                const display = card.querySelector('.schedule-display');
+            try {
+                const schedule = JSON.parse(scheduleData);
+                const navState = scheduleIndices.get(machineId) || { currentIndex: 0 };
                 
-                display.innerHTML = op ? `
-                    <div class="schedule-item">
-                        <p class="mb-1"><strong>Order:</strong> ${op.order_code}</p>
-                        <p class="mb-1"><strong>Operation:</strong> ${op.operation_name}</p>
-                        <p class="mb-1"><strong>Start:</strong> ${op.start_time_str}</p>
-                        <p class="mb-1"><strong>End:</strong> ${op.end_time_str}</p>
-                        <p class="mb-0"><strong>Duration:</strong> ${op.duration}</p>
-                    </div>
-                ` : '<div class="text-muted">No scheduled operations</div>';
-                
-                card.querySelector('.op-counter').textContent = 
-                    `${currentIndex + 1}/${schedule.length}`;
-            };
-
-            // Navigation handlers
-            card.querySelector('.next-op').addEventListener('click', () => {
-                if (currentIndex < schedule.length - 1) {
-                    currentIndex++;
-                    updateDisplay();
+                // Initialize if not exists
+                if (!scheduleIndices.has(machineId)) {
+                    // Find current operation index
+                    const now = Date.now();
+                    navState.currentIndex = schedule.findIndex(op => {
+                        const start = new Date(op.start_time).getTime();
+                        const end = new Date(op.end_time).getTime();
+                        return start <= now && now <= end;
+                    });
+                    
+                    // If no current operation, default to 0
+                    if (navState.currentIndex === -1) navState.currentIndex = 0;
+                    
+                    scheduleIndices.set(machineId, navState);
                 }
-            });
 
-            card.querySelector('.prev-op').addEventListener('click', () => {
-                if (currentIndex > 0) {
-                    currentIndex--;
-                    updateDisplay();
-                }
-            });
+                const updateDisplay = () => {
+                    const display = card.querySelector('.schedule-display');
+                    
+                    if (schedule.length === 0) {
+                        display.innerHTML = '<div class="text-muted">No scheduled operations</div>';
+                        card.querySelector('.op-counter').textContent = '0/0';
+                        return;
+                    }
+                    
+                    const op = schedule[navState.currentIndex];
+                    
+                    if (op) {
+                        display.innerHTML = `
+                            <div class="schedule-item">
+                                <p class="mb-1"><strong>Order:</strong> ${op.order_code}</p>
+                                <p class="mb-1"><strong>Operation:</strong> ${op.operation_name}</p>
+                                <p class="mb-1"><strong>Start:</strong> <span class="start-time-display">${op.start_time_str}</span></p>
+                                <p class="mb-1"><strong>End:</strong> <span class="end-time-display">${op.end_time_str}</span></p>
+                                <p class="mb-0"><strong>Duration:</strong> ${op.duration}</p>
+                            </div>
+                        `;
+                        card.querySelector('.op-counter').textContent = 
+                            `${navState.currentIndex + 1}/${schedule.length}`;
+                    }
+                };
 
-            // Initial display
-            updateDisplay();
-            
-            // Auto-update current operation
-            setInterval(() => {
-                const now = Date.now();
-                const newIndex = schedule.findIndex(op => 
-                    op.start_time <= now && now <= op.end_time
-                );
-                if (newIndex !== -1 && newIndex !== currentIndex) {
-                    currentIndex = newIndex;
-                    updateDisplay();
-                }
-            }, 1000);
+                card.querySelector('.next-op').addEventListener('click', () => {
+                    if (navState.currentIndex < schedule.length - 1) {
+                        navState.currentIndex++;
+                        updateDisplay();
+                    }
+                });
+
+                card.querySelector('.prev-op').addEventListener('click', () => {
+                    if (navState.currentIndex > 0) {
+                        navState.currentIndex--;
+                        updateDisplay();
+                    }
+                });
+
+                updateDisplay();
+            } catch (error) {
+                console.error('Error initializing machine schedule:', error);
+            }
         });
     }
 
     // Initialize after DOM loads
     document.addEventListener('DOMContentLoaded', () => {
-        // Initialize everything immediately
         initializeMachineSchedules();
-        updateAllProgress();
-        
-        // Real-time update engine
-        const updateEngine = () => {
-            updateAllProgress();
-            requestAnimationFrame(updateEngine);
-        };
-        
-        // Start the animation frame loop
-        requestAnimationFrame(updateEngine);
-        
-        // Backup interval for operations that don't need 60fps
-        const backupInterval = setInterval(updateAllProgress, 1000);
-        
-        // Cleanup
-        window.addEventListener('beforeunload', () => {
-            clearInterval(backupInterval);
-        });
+        setInterval(updateAllProgress, 1000);
+        setInterval(updateEngine, 2000);  // Refresh every 2 seconds
     });
+
+    function updateEngine() {
+        fetch('/machine_status')
+            .then(response => response.text())
+            .then(html => {
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = html;
+                
+                // Update only progress bars and times
+                document.querySelectorAll('.machine-card').forEach(existingCard => {
+                    const machineId = existingCard.dataset.machineId;
+                    const newCard = tempDiv.querySelector(`[data-machine-id="${machineId}"]`);
+                    
+                    if (newCard) {
+                        // Update progress bar
+                        const newProgress = newCard.querySelector('.progress-bar');
+                        const existingProgress = existingCard.querySelector('.progress-bar');
+                        if (newProgress && existingProgress) {
+                            existingProgress.style.width = newProgress.style.width;
+                            existingProgress.textContent = newProgress.textContent;
+                        }
+                        
+                        // Update time info
+                        const newTimes = newCard.querySelector('.time-info');
+                        const existingTimes = existingCard.querySelector('.time-info');
+                        if (newTimes && existingTimes) {
+                            existingTimes.innerHTML = newTimes.innerHTML;
+                        }
+                        
+                        // Update upcoming operations list
+                        const newUpcoming = newCard.querySelector('.upcoming-operations');
+                        const existingUpcoming = existingCard.querySelector('.upcoming-operations');
+                        if (newUpcoming && existingUpcoming) {
+                            existingUpcoming.innerHTML = newUpcoming.innerHTML;
+                        }
+                    }
+                });
+            })
+            .catch(err => console.error('Error refreshing data:', err));
+        
+        setTimeout(updateEngine, 2000); // Refresh every 2 seconds
+    }
+
+    function updateProgressBars() {
+        document.querySelectorAll('.machine-card.busy').forEach(card => {
+            const progressBar = card.querySelector('.progress-bar');
+            const startTime = new Date(progressBar.dataset.startTime);
+            const endTime = new Date(progressBar.dataset.endTime);
+            const now = new Date();
+            
+            if (now >= startTime && now <= endTime) {
+                const total = endTime - startTime;
+                const elapsed = now - startTime;
+                const percent = (elapsed / total) * 100;
+                
+                progressBar.style.width = `${percent.toFixed(1)}%`;
+                progressBar.textContent = `${percent.toFixed(1)}%`;
+                
+                const remaining = (endTime - now) / 1000;
+                card.querySelector('.remaining').textContent = formatDuration(remaining);
+                card.querySelector('.elapsed').textContent = formatDuration(elapsed/1000);
+            }
+        });
+    }
+
+    // Update this to run every second
+    setInterval(updateProgressBars, 1000);
     </script>
 </body>
 </html> 

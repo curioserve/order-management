@@ -1,9 +1,9 @@
 .machine-status-container {
     margin: 20px;
     padding: 20px;
-    background-color: #f8f9fa;
+    background-color: #0b72d9;
     border-radius: 12px;
-}
+}w
 
 .machine-grid {
     display: grid;
@@ -55,7 +55,7 @@
 
 .progress-bar {
     height: 20px;
-    background-color: #0773de;
+    background-color: #218bf5;
     border-radius: 10px;
     overflow: hidden;
     position: relative;
@@ -63,7 +63,7 @@
 
 .progress {
     height: 100%;
-    background: linear-gradient(90deg, #74c0fc, #4dabf7);
+    background: linear-gradient(90deg, #4e73df, #224abe);
     transition: width 0.3s ease;
     display: flex;
     align-items: center;
@@ -110,4 +110,24 @@
     font-size: 0.8em;
     color: #868e96;
     display: block;
+}
+
+/* Override Bootstrap progress bar colors for machine status */
+.progress .progress-bar-striped,
+.progress .progress-bar-animated,
+.progress-bar.progress-bar-striped, 
+.progress-bar.progress-bar-animated {
+    background-color: #4e73df !important;
+    color: white !important;
+}
+
+.progress-bar-striped {
+    background-image: linear-gradient(45deg, rgba(255, 255, 255, .15) 25%, transparent 25%, transparent 50%, rgba(255, 255, 255, .15) 50%, rgba(255, 255, 255, .15) 75%, transparent 75%, transparent) !important;
+}
+
+/* Add specific override for machine-status progress bars */
+.machine-card .progress-bar,
+.current-operation .progress-bar {
+    background-color: #4e73df !important;
+    color: white !important;
 }

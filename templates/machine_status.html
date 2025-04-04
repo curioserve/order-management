@@ -2,47 +2,41 @@
     <h2>Machine Status</h2>
     <div class="machine-grid">
         {% for machine_id, status in machine_status.items() %}
-        <div class="machine-card {% if status.status == 'busy' %}busy{% else %}idle{% endif %}">
+        <div class="machine-card {% if status.status == 'busy' %}busy{% else %}idle{% endif %}" 
+             data-machine-id="{{ machine_id }}">
             <h3>{{ machine_id }}</h3>
-            {% if status.status == 'busy' %}
-                <div class="current-operation">
-                    <div class="operation-header">
-                        <span class="status-badge busy">In Progress</span>
-                    </div>
-                    <div class="operation-details">
-                        <p><strong>Current Order:</strong> {{ status.current_order }}</p>
-                        <p><strong>Operation:</strong> {{ status.current_operation }}</p>
-                        <p class="time-range">
-                            <span>{{ status.start_time_str }}</span> - 
-                            <span>{{ status.end_time_str }}</span>
-                        </p>
-                    </div>
-                    
-                    <div class="operation-progress">
-                        <div class="progress" style="height: 20px;">
-                            <div class="progress-bar progress-bar-striped progress-bar-animated"
+            <div class="status-info">
+                {% if status.status == 'busy' %}
+                    <div class="current-operation">
+                        <div class="operation-header">
+                            <span class="status-badge busy">In Progress</span>
+                        </div>
+                        <div class="operation-details">
+                            <p><strong>Order:</strong> <span class="current-order">{{ status.current_order }}</span></p>
+                            <p><strong>Operation:</strong> <span class="current-operation">{{ status.current_operation }}</span></p>
+                        </div>
+                        
+                        <div class="progress">
+                            <div class="progress-bar" 
                                  role="progressbar"
-                                 style="width: {{ '%.1f'|format(status.progress_percentage) }}%"
-                                 data-start-time="{{ status.start_time.isoformat() if status.start_time }}"
-                                 data-end-time="{{ status.end_time.isoformat() if status.end_time }}"
-                                 aria-valuenow="{{ status.progress_percentage }}"
-                                 aria-valuemin="0"
-                                 aria-valuemax="100">
+                                 data-start="{{ status.start_time.timestamp() if status.start_time else '' }}"
+                                 data-end="{{ status.end_time.timestamp() if status.end_time else '' }}"
+                                 style="width: {{ status.progress_percentage }}%">
                                 {{ "%.1f"|format(status.progress_percentage) }}%
                             </div>
                         </div>
+                        
                         <div class="time-info">
-                            <span class="elapsed">{{ status.elapsed_time }} elapsed</span>
-                            <span class="remaining">{{ format_duration(status.remaining_time) }} remaining</span>
+                            <p>Elapsed: <span class="elapsed">{{ format_duration(0) }}</span></p>
+                            <p>Remaining: <span class="remaining">{{ format_duration(status.remaining_time) }}</span></p>
                         </div>
                     </div>
-                </div>
-            {% else %}
-                <div class="idle-status">
-                    <span class="status-badge idle">Idle</span>
-                    <p>Machine Available</p>
-                </div>
-            {% endif %}
+                {% else %}
+                    <div class="idle-status">
+                        <span class="status-badge idle">Idle</span>
+                    </div>
+                {% endif %}
+            </div>
             
             {% if status.upcoming_operations %}
             <div class="upcoming-operations">
@@ -63,50 +57,89 @@
                 </ul>
             </div>
             {% endif %}
+
+            <div class="schedule-section">
+                <h4>Schedule</h4>
+                <div class="schedule-timeline">
+                    {% for op in machine_schedule[machine_id] %}
+                    {% set order = op[0] %}
+                    {% set operation = op[1] %}
+                    {% set start_time = op[2] %}
+                    {% set end_time = op[3] %}
+                    <div class="schedule-item 
+                        {% if current_time > end_time %}completed{% endif %} 
+                        {% if start_time <= current_time <= end_time %}current{% endif %}">
+                        <div class="schedule-item-header">
+                            <span class="order-code">{{ order.order_code }}</span>
+                            {% if operation.status == OperationStatus.COMPLETED %}
+                            <i class="bi bi-check-circle-fill text-success"></i>
+                            {% elif current_time > end_time %}
+                            <i class="bi bi-x-circle-fill text-danger"></i>
+                            {% endif %}
+                        </div>
+                        <div class="schedule-details">
+                            <span>{{ operation.name }}</span>
+                            <div class="time-range">
+                                {{ start_time.strftime('%H:%M') }} - 
+                                {{ end_time.strftime('%H:%M') }}
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
         </div>
         {% endfor %}
     </div>
 </div>
 
 <style>
+.machine-status-container {
+    padding: 20px;
+}
+
 .machine-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    gap: 1rem;
-    padding: 1rem;
+    gap: 20px;
 }
 
 .machine-card {
     border: 1px solid #ddd;
     border-radius: 8px;
-    padding: 1rem;
-    background-color: #fff;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    padding: 15px;
+    background: white;
 }
 
 .machine-card.busy {
-    border-left: 4px solid #ffc107;
+    border-color: #007bff;
 }
 
 .machine-card.idle {
-    border-left: 4px solid #28a745;
+    border-color: #6c757d;
 }
 
 .status-badge {
-    padding: 0.25rem 0.5rem;
+    display: inline-block;
+    padding: 4px 8px;
     border-radius: 4px;
-    font-size: 0.875rem;
-    font-weight: 500;
+    font-size: 0.9em;
+    font-weight: bold;
 }
 
-.operation-progress {
-    margin: 1rem 0;
+.status-badge.busy {
+    background-color: #007bff;
+    color: white;
+}
+
+.status-badge.idle {
+    background-color: #6c757d;
+    color: white;
 }
 
 .progress {
-    margin-bottom: 0.5rem;
-    background-color: #e9ecef;
-    border-radius: 0.25rem;
+    margin: 10px 0;
+    height: 20px;
 }
 
 .progress-bar {
@@ -114,35 +147,14 @@
     color: white;
     text-align: center;
     line-height: 20px;
-    font-weight: 500;
+    transition: width 0.5s ease;
 }
 
-.progress-bar-striped {
-    background-image: linear-gradient(45deg, 
-        rgba(255,255,255,.15) 25%, 
-        transparent 25%, 
-        transparent 50%, 
-        rgba(255,255,255,.15) 50%, 
-        rgba(255,255,255,.15) 75%, 
-        transparent 75%, 
-        transparent);
-    background-size: 1rem 1rem;
-}
-
-.progress-bar-animated {
-    animation: progress-bar-stripes 1s linear infinite;
-}
-
-.time-remaining {
-    font-size: 0.875rem;
-    color: #666;
-    text-align: right;
-    margin-top: 0.25rem;
-}
-
-@keyframes progress-bar-stripes {
-    0% { background-position: 1rem 0; }
-    100% { background-position: 0 0; }
+.time-info {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 10px;
+    font-size: 0.9em;
 }
 
 /* Add these new styles */
@@ -185,58 +197,91 @@
     color: #666;
 }
 
-/* Update existing progress bar styles */
-.progress-bar {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.875rem;
-    font-weight: 500;
+.schedule-item.completed {
+    background-color: #e8f5e9;
+    border-left: 4px solid #4caf50;
+    opacity: 0.7;
 }
 
-.progress {
-    background-color: #e9ecef;
-    border-radius: 4px;
-    overflow: hidden;
+.schedule-item.current {
+    background-color: #fff3e0;
+    border-left: 4px solid #ff9800;
+}
+
+.bi-check-circle-fill {
+    margin-left: auto;
+    font-size: 1.2em;
+}
+
+@keyframes progress {
+    from { width: 0%; }
+    to { width: 100%; }
 }
 </style>
 
 <script>
-function updateProgressBars() {
-    const now = new Date();
-    
-    document.querySelectorAll('.machine-card.busy').forEach(card => {
-        const progressBar = card.querySelector('.progress-bar');
-        const remainingTimeSpan = card.querySelector('.remaining-time');
-        
-        if (progressBar && progressBar.dataset.startTime && progressBar.dataset.endTime) {
-            const startTime = new Date(progressBar.dataset.startTime);
-            const endTime = new Date(progressBar.dataset.endTime);
-            
-            if (now >= startTime && now <= endTime) {
-                const totalDuration = endTime - startTime;
-                const elapsed = now - startTime;
-                const progress = (elapsed / totalDuration) * 100;
-                const remainingSeconds = Math.max(0, (endTime - now) / 1000);
-                
-                progressBar.style.width = `${Math.min(100, progress)}%`;
-                progressBar.textContent = `${progress.toFixed(1)}%`;
-                remainingTimeSpan.textContent = formatDuration(remainingSeconds);
-            }
-        }
-    });
-}
-
 function formatDuration(seconds) {
-    const hours = Math.floor(seconds / 3600);
+    if (seconds < 0) return "0D 0H 0M 0S";
+    
+    // Convert to days, hours, minutes, and seconds
+    const days = Math.floor(seconds / 86400);
+    const hours = Math.floor((seconds % 86400) / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
     const secs = Math.floor(seconds % 60);
-    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    
+    // Format based on the duration
+    if (days > 0) {
+        return `${days}D ${hours}H ${minutes}M ${secs}S`;
+    } else if (hours > 0) {
+        return `${hours}H ${minutes}M ${secs}S`;
+    } else {
+        return `${minutes}M ${secs}S`;
+    }
 }
 
-// Update progress bars every second
-setInterval(updateProgressBars, 1000);
+function updateMachineStatus() {
+    fetch('/api/machine_status')
+        .then(response => response.json())
+        .then(data => {
+            Object.entries(data).forEach(([machineId, status]) => {
+                const card = document.querySelector(`[data-machine-id="${machineId}"]`);
+                if (!card) return;
+
+                // Update status class
+                card.className = `machine-card ${status.status}`;
+
+                // Update status badge
+                const badge = card.querySelector('.status-badge');
+                if (badge) {
+                    badge.className = `status-badge ${status.status}`;
+                    badge.textContent = status.status === 'busy' ? 'In Progress' : 'Idle';
+                }
+
+                if (status.status === 'busy') {
+                    // Update order and operation
+                    card.querySelector('.current-order').textContent = status.current_order;
+                    card.querySelector('.current-operation').textContent = status.current_operation;
+
+                    // Update progress bar
+                    const progressBar = card.querySelector('.progress-bar');
+                    if (progressBar) {
+                        progressBar.style.width = `${status.progress}%`;
+                        progressBar.textContent = `${status.progress.toFixed(1)}%`;
+                    }
+
+                    // Update time info
+                    const elapsed = (Date.now() - status.start_time * 1000) / 1000;
+                    card.querySelector('.elapsed').textContent = formatDuration(elapsed);
+                    card.querySelector('.remaining').textContent = formatDuration(status.remaining);
+                }
+            });
+        })
+        .catch(err => console.error('Error fetching status:', err));
+}
 
 // Initial update
-updateProgressBars();
+updateMachineStatus();
+
+// Update every second
+setInterval(updateMachineStatus, 1000);
 </script>
