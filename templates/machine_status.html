@@ -241,6 +241,8 @@
 </style>
 
 <script>
+console.log('Machine status script block started.'); // Added log
+
 function formatDuration(seconds) {
     if (seconds < 0) return "0D 0H 0M 0S";
     
@@ -265,41 +267,23 @@ const sessionStartTime = Date.now() / 1000;
 
 // Just update the timers based on the data attributes - NO API CALLS
 function updateTimers() {
-    const now = Date.now() / 1000; // Current time in seconds
-    
-    // Update global elapsed time
-    const globalElapsed = now - sessionStartTime;
-    const globalElapsedElement = document.getElementById('global-elapsed');
-    if (globalElapsedElement) {
-        globalElapsedElement.textContent = formatDuration(globalElapsed);
-    }
-    
-    document.querySelectorAll('.progress-bar[data-start]').forEach(progressBar => {
-        const startTime = parseFloat(progressBar.getAttribute('data-start'));
-        const endTime = parseFloat(progressBar.getAttribute('data-end'));
-        
-        if (startTime && endTime) {
-            // Calculate remaining time
-            const remaining = Math.max(0, endTime - now);
-            
-            // Find the parent card
-            const timeInfo = progressBar.closest('.machine-card').querySelector('.time-info');
-            if (timeInfo) {
-                const remainingElement = timeInfo.querySelector('.remaining');
-                
-                if (remainingElement) remainingElement.textContent = formatDuration(remaining);
-            }
-            
-            // Update progress percentage
-            const totalDuration = endTime - startTime;
-            if (totalDuration > 0) {
-                const progress = Math.min(100, ((now - startTime) / totalDuration) * 100);
-                progressBar.style.width = `${progress.toFixed(1)}%`;
-                progressBar.textContent = `${progress.toFixed(1)}%`;
-            }
-        }
+    const now = performance.now();
+    document.querySelectorAll('.machine-timer').forEach(timer => {
+        const startTime = parseFloat(timer.dataset.startTime);
+        const elapsed = (now - startTime) / 1000;
+        timer.textContent = `${elapsed.toFixed(1)}s`;
     });
 }
+
+document.querySelectorAll('.machine-timer').forEach(timer => {
+    timer.dataset.startTime = performance.now().toString();
+});
+
+function animate() {
+    updateTimers();
+    requestAnimationFrame(animate);
+}
+animate();
 
 // Even stronger API call blocking
 // BLOCK ALL API CALLS that might interfere with our timers
@@ -355,31 +339,5 @@ if (typeof $ !== 'undefined') {
     };
 }
 
-// Add a MutationObserver to detect and prevent unwanted DOM changes
-const observer = new MutationObserver(mutations => {
-    mutations.forEach(mutation => {
-        if (mutation.type === 'childList') {
-            // If someone is trying to replace our time elements, prevent it
-            const timeInfos = document.querySelectorAll('.time-info');
-            timeInfos.forEach(timeInfo => {
-                if (mutation.target === timeInfo || timeInfo.contains(mutation.target)) {
-                    console.log('Detected unwanted DOM change to time elements!');
-                    mutation.stopPropagation(); // Try to stop the mutation
-                }
-            });
-        }
-    });
-});
-
-// Start observing the entire document
-observer.observe(document.documentElement, {
-    childList: true,
-    subtree: true
-});
-
-// Run timer updates every 100ms for smooth counting - NO API CALLS!
-setInterval(updateTimers, 100);
-
-// Log when this script runs
 console.log('Machine status timers initialized at ' + new Date().toISOString());
 </script>
